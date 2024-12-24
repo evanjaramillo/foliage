@@ -17,7 +17,7 @@ module.exports = {
                         singleQuote: true,
                         bracketSpacing: true,
                         eslintIntegration: true,
-                        printWidth: 80,
+                        printWidth: 100,
                     },
                 ],
             },

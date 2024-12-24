@@ -82,11 +82,7 @@ export function insertUnique<T>(
     return false; // nothing to add.
 }
 
-export function findAll<T>(
-    element: T,
-    array: T[],
-    comparator: SearchComparator<T>,
-): T[] {
+export function findAll<T>(element: T, array: T[], comparator: SearchComparator<T>): T[] {
     const index = binarySearch(array, element, comparator);
 
     if (index < 0) {
