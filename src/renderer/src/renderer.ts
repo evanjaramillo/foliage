@@ -15,6 +15,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { Grammar } from './grammar';
 import { Actions, applyActions, applyAllRules, RuleCollection } from './rule';
 import { currentState, restore, save, State, StateCollection } from './state';
+import { PseudoRandom, PseudoRandomGenerator } from './random';
 
 export const UNIT_X = new Vector3(1, 0, 0);
 export const UNIT_Y = new Vector3(0, 1, 0);
@@ -24,10 +25,11 @@ export abstract class AbstractRenderer {
     protected scene: Scene;
     protected camera: PerspectiveCamera;
     protected renderer: WebGLRenderer;
+    protected generator: PseudoRandomGenerator<string, number>;
 
     private orbitControls: OrbitControls;
 
-    protected constructor() {
+    protected constructor(seed: string) {
         this.scene = new Scene();
         this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -37,6 +39,8 @@ export abstract class AbstractRenderer {
         this.renderer = new WebGLRenderer();
         document.body.appendChild(this.renderer.domElement);
         this.renderer.setAnimationLoop(this.render);
+
+        this.generator = new PseudoRandom(seed);
 
         this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
         // we want the camera to slowly rotate.
@@ -74,10 +78,29 @@ export abstract class AbstractRenderer {
         this.scene.add(arrow);
     }
 
+    protected randomDirectionVector(angleFromY: number): Vector3 {
+        // Generate a random azimuthal angle between 0 and 2π
+        const azimuthalAngle = this.generator.next() * 2 * Math.PI;
+
+        // Calculate the direction vector using spherical coordinates
+        const x = Math.sin(angleFromY) * Math.cos(azimuthalAngle);
+        const y = Math.cos(angleFromY);
+        const z = Math.sin(angleFromY) * Math.sin(azimuthalAngle);
+
+        // Return the resulting vector
+        return new Vector3(x, y, z);
+    }
+
     private render(): void {
         this.renderer.render(this.scene, this.camera);
         this.orbitControls.update();
     }
+}
+
+export interface FoliageRendererOptions {
+    iterations: number;
+    seed: string;
+    initialState: State;
 }
 
 const foliageRendererDefaultState: State = {
@@ -86,6 +109,12 @@ const foliageRendererDefaultState: State = {
     length: 0.5,
     radius: 0.1,
     angle: 0,
+};
+
+const foliageRendererDefaultOptions = {
+    iterations: 3,
+    seed: 'default',
+    initialState: foliageRendererDefaultState,
 };
 
 export class FoliageRenderer extends AbstractRenderer {
@@ -97,21 +126,17 @@ export class FoliageRenderer extends AbstractRenderer {
 
     private states: StateCollection;
 
-    constructor(
-        grammar: Grammar,
-        iterations: number = 3,
-        initialState: State = foliageRendererDefaultState,
-    ) {
-        super();
+    constructor(grammar: Grammar, options: FoliageRendererOptions = foliageRendererDefaultOptions) {
+        super(options.seed);
 
         // Unpack the L-System information from the provided grammar and the
         // requested number of iterations
         this.axiom = grammar.axiom;
         this.rules = grammar.rules;
-        this.iterations = iterations;
+        this.iterations = options.iterations;
 
         // Get the initial state into its state collection
-        this.states = [initialState];
+        this.states = [options.initialState];
 
         // bind state functions.
         this.advect = this.advect.bind(this);
@@ -151,15 +176,6 @@ export class FoliageRenderer extends AbstractRenderer {
         this.drawDebugPoint(destination);
         this.drawDebugArrow(current);
 
-        // scene.add(
-        //     createSegment(
-        //         currentPosition,
-        //         dst,
-        //         currentRadius,
-        //         currentRadius,
-        //     ),
-        // );
-
         current.position.copy(destination);
         current.length *= 0.9;
     }
@@ -168,13 +184,17 @@ export class FoliageRenderer extends AbstractRenderer {
         const current = currentState(this.states);
 
         current.angle += 20;
-        current.direction.copy(randomDirectionVector(Math.PI * (current.angle / 180)).normalize());
+        current.direction.copy(
+            this.randomDirectionVector(Math.PI * (current.angle / 180)).normalize(),
+        );
     }
 
     private conformToY(): void {
         const current = currentState(this.states);
         current.angle -= 20;
-        current.direction.copy(randomDirectionVector(Math.PI * (current.angle / 180)).normalize());
+        current.direction.copy(
+            this.randomDirectionVector(Math.PI * (current.angle / 180)).normalize(),
+        );
     }
 
     private saveState(): void {
@@ -202,19 +222,6 @@ export class FoliageRenderer extends AbstractRenderer {
 
 function computeDestination(start: Vector3, direction: Vector3, length: number): Vector3 {
     return start.clone().add(direction.normalize().multiplyScalar(length));
-}
-
-function randomDirectionVector(angleFromY: number): Vector3 {
-    // Generate a random azimuthal angle between 0 and 2π
-    const azimuthalAngle = Math.random() * 2 * Math.PI;
-
-    // Calculate the direction vector using spherical coordinates
-    const x = Math.sin(angleFromY) * Math.cos(azimuthalAngle);
-    const y = Math.cos(angleFromY);
-    const z = Math.sin(angleFromY) * Math.sin(azimuthalAngle);
-
-    // Return the resulting vector
-    return new Vector3(x, y, z);
 }
 
 // function createSegment(start: Vector3, end: Vector3, startRadius: number, endRadius: number): Mesh {
