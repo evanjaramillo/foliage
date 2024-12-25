@@ -1,6 +1,7 @@
 import {
     ArrowHelper,
     ColorRepresentation,
+    Matrix4,
     Mesh,
     MeshBasicMaterial,
     PerspectiveCamera,
@@ -75,24 +76,33 @@ export abstract class AbstractRenderer {
         p.position.copy(point);
         this.scene.add(p);
     }
+
     protected drawDebugArrow(state: State, color: ColorRepresentation = 0xffff00): void {
         const arrow = new ArrowHelper(state.direction.normalize(), state.position, state.length);
         arrow.setColor(color);
         this.scene.add(arrow);
     }
 
-    protected randomDirectionVector(angleFromY: number): Vector3 {
-        // Generate a random azimuthal angle between 0 and 2π
-        const azimuthalAngle = this.generator.next() * 2 * Math.PI;
-
-        // Calculate the direction vector using spherical coordinates
-        const x = Math.sin(angleFromY) * Math.cos(azimuthalAngle);
-        const y = Math.cos(angleFromY);
-        const z = Math.sin(angleFromY) * Math.sin(azimuthalAngle);
-
-        // Return the resulting vector
-        return new Vector3(x, y, z);
+    protected generateAngle(maxVarianceInDeg: number): number {
+        return (this.generator.next() * 2 - 1) * toRadians(maxVarianceInDeg);
     }
+
+    protected perturbDirection(state: State, maxAngleVarianceDegrees: number): Vector3 {
+        const direction = new Vector3();
+        direction.copy(state.direction).normalize();
+
+        const rotationX = new Matrix4().makeRotationX(this.generateAngle(maxAngleVarianceDegrees));
+        const rotationY = new Matrix4().makeRotationY(this.generateAngle(maxAngleVarianceDegrees));
+        const rotationZ = new Matrix4().makeRotationZ(this.generateAngle(maxAngleVarianceDegrees));
+
+        const totalRotation = new Matrix4().multiplyMatrices(rotationX, rotationY);
+        totalRotation.multiply(rotationZ);
+
+        direction.applyMatrix4(totalRotation);
+
+        return direction;
+    }
+
     protected computeDestination(start: Vector3, direction: Vector3, length: number): Vector3 {
         return start.clone().add(direction.normalize().multiplyScalar(length));
     }
@@ -196,15 +206,12 @@ export class FoliageRenderer extends AbstractRenderer {
 
     private deviateFromY(): void {
         const current = currentState(this.states);
-
-        current.angle += this.angleOffset;
-        current.direction.copy(this.randomDirectionVector(toRadians(current.angle)).normalize());
+        current.direction.copy(this.perturbDirection(current, this.angleOffset));
     }
 
     private conformToY(): void {
         const current = currentState(this.states);
-        current.angle -= this.angleOffset;
-        current.direction.copy(this.randomDirectionVector(toRadians(current.angle)).normalize());
+        current.direction.copy(this.perturbDirection(current, this.angleOffset));
     }
 
     private saveState(): void {
@@ -227,6 +234,26 @@ export class FoliageRenderer extends AbstractRenderer {
         const renderedCommands = applyAllRules(this.axiom, this.iterations, this.rules);
 
         applyActions(renderedCommands, this.actions);
+
+        // const initialPosition = new Vector3(0, 0, 0);
+        // const direction = new Quaternion().setFromAxisAngle(UNIT_Y, 0);
+        //
+        // const arrow = new ArrowHelper();
+        // arrow.setRotationFromQuaternion(direction);
+        // arrow.setLength(1.0);
+        // arrow.setColor(0x0000ff);
+        // arrow.position.copy(initialPosition);
+        // this.scene.add(arrow);
+        //
+        // const dest = initialPosition.clone().applyQuaternion(direction);
+        // dest.multiplyScalar(1);
+        //
+        // const newArrow = new ArrowHelper();
+        // newArrow.position.copy(dest);
+        // newArrow.setLength(1);
+        // newArrow.setColor(0x0000ff);
+        // newArrow.setRotationFromQuaternion(direction);
+        // this.scene.add(newArrow);
     }
 
     get lengthFactor(): number {

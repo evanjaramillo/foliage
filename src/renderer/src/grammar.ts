@@ -9,7 +9,7 @@ export interface Grammar {
 
 export const defaultGrammars: Grammar[] = [
     {
-        axiom: 'Z',
+        axiom: 'X',
         rules: [
             {
                 input: 'F',
