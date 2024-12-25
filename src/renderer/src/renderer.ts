@@ -12,22 +12,26 @@ import {
 } from 'three';
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { Grammar } from './grammar';
+import { Axiom, Grammar } from './grammar';
 import { Actions, applyActions, applyAllRules, RuleCollection } from './rule';
 import { currentState, restore, save, State, StateCollection } from './state';
 import { PseudoRandom, PseudoRandomGenerator } from './random';
 
+// Axes
 export const UNIT_X = new Vector3(1, 0, 0);
 export const UNIT_Y = new Vector3(0, 1, 0);
 export const UNIT_Z = new Vector3(0, 0, 1);
+
+export function toRadians(value: number): number {
+    return Math.PI * (value / 180);
+}
 
 export abstract class AbstractRenderer {
     protected scene: Scene;
     protected camera: PerspectiveCamera;
     protected renderer: WebGLRenderer;
     protected generator: PseudoRandomGenerator<string, number>;
-
-    private orbitControls: OrbitControls;
+    protected orbitControls: OrbitControls;
 
     protected constructor(seed: string) {
         this.scene = new Scene();
@@ -48,7 +52,6 @@ export abstract class AbstractRenderer {
         // we want the plane to be viewed from the top down.
         this.orbitControls.maxPolarAngle = Math.PI * (80 / 180);
         this.camera.position.z = 4;
-
         window.addEventListener('resize', this.resize);
         this.resize();
     }
@@ -90,6 +93,9 @@ export abstract class AbstractRenderer {
         // Return the resulting vector
         return new Vector3(x, y, z);
     }
+    protected computeDestination(start: Vector3, direction: Vector3, length: number): Vector3 {
+        return start.clone().add(direction.normalize().multiplyScalar(length));
+    }
 
     private render(): void {
         this.renderer.render(this.scene, this.camera);
@@ -118,16 +124,19 @@ const foliageRendererDefaultOptions = {
 };
 
 export class FoliageRenderer extends AbstractRenderer {
-    private readonly axiom: string;
+    private readonly axiom: Axiom;
     private readonly rules: RuleCollection;
     private readonly iterations: number;
-
     private readonly actions: Actions;
+    private readonly states: StateCollection;
 
-    private states: StateCollection;
+    private _lengthFactor: number = 0.9;
+    private _radiusDecayFactor: number = 0.9;
+    private _angleOffset: number = 20;
 
     constructor(grammar: Grammar, options: FoliageRendererOptions = foliageRendererDefaultOptions) {
         super(options.seed);
+        this.orbitControls.autoRotate = false;
 
         // Unpack the L-System information from the provided grammar and the
         // requested number of iterations
@@ -170,31 +179,32 @@ export class FoliageRenderer extends AbstractRenderer {
     private advect(): void {
         const current = currentState(this.states);
 
-        const destination = computeDestination(current.position, current.direction, current.length);
+        const destination = this.computeDestination(
+            current.position,
+            current.direction,
+            current.length,
+        );
 
         this.drawStatePoint(current);
         this.drawDebugPoint(destination);
         this.drawDebugArrow(current);
 
         current.position.copy(destination);
-        current.length *= 0.9;
+        current.length *= this.lengthFactor;
+        current.radius *= this.radiusDecayFactor;
     }
 
     private deviateFromY(): void {
         const current = currentState(this.states);
 
-        current.angle += 20;
-        current.direction.copy(
-            this.randomDirectionVector(Math.PI * (current.angle / 180)).normalize(),
-        );
+        current.angle += this.angleOffset;
+        current.direction.copy(this.randomDirectionVector(toRadians(current.angle)).normalize());
     }
 
     private conformToY(): void {
         const current = currentState(this.states);
-        current.angle -= 20;
-        current.direction.copy(
-            this.randomDirectionVector(Math.PI * (current.angle / 180)).normalize(),
-        );
+        current.angle -= this.angleOffset;
+        current.direction.copy(this.randomDirectionVector(toRadians(current.angle)).normalize());
     }
 
     private saveState(): void {
@@ -218,27 +228,28 @@ export class FoliageRenderer extends AbstractRenderer {
 
         applyActions(renderedCommands, this.actions);
     }
-}
 
-function computeDestination(start: Vector3, direction: Vector3, length: number): Vector3 {
-    return start.clone().add(direction.normalize().multiplyScalar(length));
-}
+    get lengthFactor(): number {
+        return this._lengthFactor;
+    }
 
-// function createSegment(start: Vector3, end: Vector3, startRadius: number, endRadius: number): Mesh {
-//     const dir = new Vector3().subVectors(end, start);
-//     const length = dir.length();
-//     const geom = new CylinderGeometry(endRadius, startRadius, length);
-//     const material = new MeshBasicMaterial({ color: 0x8b4513 });
-//     const mesh = new Mesh(geom, material);
-//     const center = new Vector3().addVectors(start, end).multiplyScalar(0.5);
-//
-//     // mesh.position.copy(center);
-//
-//     // mesh.position.y -= length / 2;
-//
-//     // const angle = dir.angleTo(new Vector3(0, 1, 0));
-//     // const rotAx = new Vector3().crossVectors(new Vector3(0, 1, 0), dir);
-//     //
-//     // mesh.setRotationFromAxisAngle(rotAx, angle);
-//     return mesh;
-// }
+    set lengthFactor(value: number) {
+        this._lengthFactor = value;
+    }
+
+    get angleOffset(): number {
+        return this._angleOffset;
+    }
+
+    set angleOffset(value: number) {
+        this._angleOffset = value;
+    }
+
+    get radiusDecayFactor(): number {
+        return this._radiusDecayFactor;
+    }
+
+    set radiusDecayFactor(value: number) {
+        this._radiusDecayFactor = value;
+    }
+}
